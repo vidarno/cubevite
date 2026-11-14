@@ -8,6 +8,7 @@ import { VIRTUAL_KEYMAP } from './devices/virtual';
 import { useCube } from './state/cubeStore';
 import { useLoop } from './state/loop';
 import { AlgLoop } from './components/AlgLoop';
+import { applyUpdate, useUpdateReady } from './pwa';
 
 type Tab = 'timer' | 'trainer' | 'algs' | 'insights';
 const TABS: { id: Tab; label: string }[] = [
@@ -26,6 +27,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>(initialTab);
   const cube = useCube();
   const loop = useLoop();
+  const updateReady = useUpdateReady();
   useEffect(() => { history.replaceState(null, '', `#${tab}`); }, [tab]);
   // Pages can navigate by setting location.hash (e.g. Algorithms -> "drill my learning cases").
   useEffect(() => {
@@ -37,7 +39,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand"><img src="/favicon.svg" alt="" width={22} height={22} /> CubeVite</div>
+        <div className="brand"><img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" width={22} height={22} /> CubeVite</div>
         <nav className="tabs">
           {TABS.map((t) => (
             <button key={t.id} className={t.id === tab ? 'active' : ''} onClick={() => setTab(t.id)}>{t.label}</button>
@@ -56,6 +58,11 @@ export default function App() {
         <footer className="keymap muted small">
           Virtual cube keys: {Object.entries(VIRTUAL_KEYMAP).map(([k, m]) => `${k.toUpperCase()}=${m}`).join('  ')}
         </footer>
+      )}
+      {updateReady && (
+        <div className="update-banner">
+          A new version of CubeVite is ready. <button className="primary" onClick={applyUpdate}>Reload</button>
+        </div>
       )}
       <footer className="legal muted small">
         CubeVite is MIT licensed · uses{' '}

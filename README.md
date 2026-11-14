@@ -4,6 +4,9 @@ A speedcubing web app for **GAN smart cubes** (developed with a GAN i4 MagLev):
 a live 3D view of the cube, random-state scrambles you follow on the physical cube,
 a timer that starts and stops itself, automatic CFOP splits, and an OLL/PLL trainer.
 
+**Try it: https://cube.pantekni.no** (desktop Chrome/Edge or Android Chrome for the smart cube; on a
+phone, "Add to Home screen" installs it as an app that also works offline).
+
 ## Running
 
 ```sh
@@ -91,6 +94,17 @@ In the meantime, the Bluefy browser on iOS supports Web Bluetooth and is worth t
 
 Other ideas: F2L case trainer, cross trainer with optimal cross solutions after each solve,
 gyro-driven cube orientation, sessions and charts, IndexedDB storage.
+
+## Deployment
+
+Every push to `main` that passes CI (lint, unit tests, build, virtual-cube e2e on the dev server, and a
+smoke test of the production build: `e2e/prod.mjs`) is deployed to GitHub Pages at
+https://cube.pantekni.no. The build is a PWA: `public/manifest.webmanifest`, icons in `public/icons/`
+(regenerate with `node scripts/icons.mjs`), and a service worker generated into `dist/sw.js` from
+`sw-template.js` that precaches the whole build. A new deploy shows a "new version - Reload" prompt.
+
+To check a production build locally: `npm run build && npx vite preview --port 4179`, then
+`E2E_URL=http://localhost:4179 node e2e/run.mjs prod trainer loop rotations`.
 
 ## Contributing
 

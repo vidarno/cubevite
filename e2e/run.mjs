@@ -1,4 +1,6 @@
 // Runs every e2e script in sequence. Needs `npm run dev -- --port 5179` (or E2E_PORT / E2E_URL).
+// `prod` is not in the default list: it needs the built app (`npm run build && npx vite preview --port 4179`,
+// E2E_URL=http://localhost:4179), where only prod, trainer, loop and rotations work (the rest import /src/ modules).
 import { spawnSync } from 'node:child_process';
 import { BASE, OUT } from './lib.mjs';
 

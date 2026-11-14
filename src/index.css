@@ -76,6 +76,7 @@ main { flex: 1; padding: 20px; max-width: 1280px; width: 100%; margin: 0 auto; }
 .keymap { padding: 8px 20px; border-top: 1px solid var(--line); text-align: center; word-spacing: 4px; }
 .legal { padding: 6px 20px 10px; text-align: center; }
 .legal a { color: inherit; }
+.update-banner { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 50; display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.4); width: max-content; max-width: calc(100vw - 32px); }
 
 .connect-bar { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: #555; display: inline-block; }

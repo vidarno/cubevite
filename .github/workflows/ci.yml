@@ -4,9 +4,14 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check:
@@ -32,16 +37,42 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Start dev server
+      - name: Virtual-cube e2e against the dev server
         run: |
-          npx vite --port 5179 --strictPort > vite.log 2>&1 &
-          for i in $(seq 1 60); do curl -sf http://localhost:5179 > /dev/null && exit 0; sleep 1; done
-          cat vite.log; exit 1
-      - run: npm run e2e # uses the runner's /usr/bin/google-chrome
+          npx vite --port 5179 --strictPort > vite-dev.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://localhost:5179 > /dev/null && break; sleep 1; done
+          npm run e2e # uses the runner's /usr/bin/google-chrome
+      - name: Smoke test against the production build
+        run: |
+          npm run build
+          npx vite preview --port 4179 --strictPort > vite-preview.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://localhost:4179 > /dev/null && break; sleep 1; done
+          E2E_URL=http://localhost:4179 node e2e/run.mjs prod trainer loop rotations
+      - if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
       - if: always()
         uses: actions/upload-artifact@v4
         with:
           name: e2e-screenshots
           path: |
             e2e-out/
-            vite.log
+            vite-*.log
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: e2e
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
