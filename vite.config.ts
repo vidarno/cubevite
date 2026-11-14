@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
@@ -8,5 +9,9 @@ export default defineConfig({
     // Licences of all bundled dependencies (cubing.js is MPL-2.0: recipients of the built app must be
     // told where its source is). Not under a dot-dir, so static hosts like GitHub Pages serve it.
     license: { fileName: 'third-party-licenses.md' },
+  },
+  test: {
+    // Some cube tests check thousands of random states; CI runners are a few times slower than a laptop.
+    testTimeout: 30_000,
   },
 })
