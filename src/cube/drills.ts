@@ -160,20 +160,22 @@ export function twoLookStep(id: TwoLookStepId, isDone?: (state: string) => boole
       const s = toCrossDown(state);
       return isF2LSolved(s, 'D') && step.isDone(s);
     }),
-    classify(state) {
-      const s = toCrossDown(state);
-      const r = classifyStep(id, s);
-      // PLL-edges skip: corners and edges solved, only the final AUF is left.
-      if (r === 'skip' && id === 'pllEdges' && !isSolved(s)) {
-        return { caseId: 'AUF', name: 'Skip (AUF only)', alg: '', preAuf: '', postAuf: aufToSolve(s) ?? '' };
-      }
-      if (!r || r === 'skip') return null;
-      return {
-        caseId: r.case.id, name: caseTitle(r.case), alg: r.case.alg, preAuf: r.preAuf, postAuf: r.postAuf,
-        alts: r.case.alts?.flatMap((alg) => { const m = matchAlg(id, s, alg); return m ? [{ alg, ...m }] : []; }),
-        diagram: { state: caseState(r.case), mode: STEP_DIAGRAM[id] },
-      };
-    },
+    classify: (state) => twoLookHint(id, toCrossDown(state)),
+  };
+}
+
+/** The 2-look case of a cross-down state for one step, as a hint (null if the state doesn't fit the step or skips it). */
+export function twoLookHint(id: TwoLookStepId, s: string): StepHint | null {
+  const r = classifyStep(id, s);
+  // PLL-edges skip: corners and edges solved, only the final AUF is left.
+  if (r === 'skip' && id === 'pllEdges' && !isSolved(s)) {
+    return { caseId: 'AUF', name: 'Skip (AUF only)', alg: '', preAuf: '', postAuf: aufToSolve(s) ?? '' };
+  }
+  if (!r || r === 'skip') return null;
+  return {
+    caseId: r.case.id, name: caseTitle(r.case), alg: r.case.alg, preAuf: r.preAuf, postAuf: r.postAuf,
+    alts: r.case.alts?.flatMap((alg) => { const m = matchAlg(id, s, alg); return m ? [{ alg, ...m }] : []; }),
+    diagram: { state: caseState(r.case), mode: STEP_DIAGRAM[id] },
   };
 }
 
@@ -322,8 +324,8 @@ export function casePlans(drill: Drill, c: DrillCase, state: string): AlgPlan[] 
  * so following live doesn't flag an equivalent AUF as a wrong turn. Order is kept: each plan's own
  * AUF first, then its variants. `isDone` is the step's done-predicate on a cube-frame state.
  */
-export function aufVariants(plans: AlgPlan[], state: string, isDone: (cubeState: string) => boolean): AlgPlan[] {
-  const s = toCrossDown(state);
+export function aufVariants(plans: AlgPlan[], state: string, isDone: (cubeState: string) => boolean, crossFace: Face = TRAINING_CROSS): AlgPlan[] {
+  const s = toCrossDown(state, crossFace);
   const out: AlgPlan[] = [];
   const seen = new Set<string>();
   const add = (p: AlgPlan) => {
@@ -335,7 +337,7 @@ export function aufVariants(plans: AlgPlan[], state: string, isDone: (cubeState:
     if (!p.alg) continue;
     for (const preAuf of AUF) {
       if (preAuf === p.preAuf) continue;
-      const postAuf = AUF.find((post) => isDone(toCubeFrame(normalizeCenters(applyAlg(s, `${preAuf} ${p.alg} ${post}`)))));
+      const postAuf = AUF.find((post) => isDone(toCubeFrame(normalizeCenters(applyAlg(s, `${preAuf} ${p.alg} ${post}`)), crossFace)));
       if (postAuf !== undefined) add({ alg: p.alg, preAuf, postAuf });
     }
   }

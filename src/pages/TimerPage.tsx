@@ -16,6 +16,8 @@ import { SplitsTable } from '../components/SplitsTable';
 import { SolveDetail } from '../components/SolveDetail';
 import { AnalysisSummary } from '../components/SolveAnalysis';
 import { analysisOf, crossHold } from '../cube/analysis';
+import { LLHintTracker, type HintStyle, type HintView } from '../cube/llHint';
+import { LLDiagram } from '../components/LLDiagram';
 
 type Phase =
   | { kind: 'scrambling' }
@@ -55,6 +57,8 @@ export function TimerPage() {
   const [crossFollow, setCrossFollow] = useState<AlgFollow | null>(null);
   const crossFollowRef = useRef(crossFollow);
   crossFollowRef.current = crossFollow;
+  /** Last-layer hints during the current smart solve (null when off / not solving). */
+  const hintRef = useRef<LLHintTracker | null>(null);
 
   // --- scramble generation & follow sequence ------------------------------------------
   /** Phase 'ready' (and, for a redo with cross, start following the optimal cross from `target`). */
@@ -132,10 +136,13 @@ export function TimerPage() {
     const time = p.moves[p.moves.length - 1].t;
     const splits = analyzeSolve(p.startState, p.moves);
     const r = redoRef.current;
+    const hints = hintRef.current?.used() ?? [];
+    hintRef.current = null;
     saveSolve({
       id: uid(), date: Date.now(), scramble: scrambleRef.current, time, smart: true,
       start: p.startState, moves: p.moves, splits, penalty: p.penalty,
       ...(r ? { redoOf: r.solve.redoOf ?? r.solve.id } : {}),
+      ...(hints.length ? { hints } : {}),
     });
     newScramble();
   }, [newScramble, saveSolve]);
@@ -161,12 +168,17 @@ export function TimerPage() {
       const inspected = (performance.now() - ph.readyAt) / 1000;
       const penalty = !settingsStore.get().inspection ? undefined : inspected > 17 ? 'DNF' : inspected > 15 ? '+2' : undefined;
       const next: Phase = { kind: 'solving', startTs: ev.localTimestamp, startState: ev.prev, moves: [{ move: ev.move, t: 0 }], penalty };
+      const st = settingsStore.get();
+      const style: HintStyle = st.llHints ?? '2look';
+      hintRef.current = style === 'off' ? null : new LLHintTracker(style, st.noRotations ?? false, performance.now(), ev.prev);
+      hintRef.current?.push(ev.move, ev.state, performance.now());
       setPhase(next);
       advanceCross(ev.move, ev.state);
     } else if (ph.kind === 'solving') {
       const moves = [...ph.moves, { move: ev.move, t: ev.localTimestamp - ph.startTs }];
       const next = { ...ph, moves };
       advanceCross(ev.move, ev.state);
+      hintRef.current?.push(ev.move, ev.state, performance.now());
       if (isSolved(ev.state)) finishSmart(next);
       else setPhase(next);
     }
@@ -179,6 +191,11 @@ export function TimerPage() {
       if (e.code !== 'Space' || e.repeat) { if (e.code === 'Space') e.preventDefault(); return; }
       e.preventDefault();
       const ph = phaseRef.current;
+      if (ph.kind === 'solving') { // smart solve: space = next hint tier
+        hintRef.current?.reveal();
+        setNow(performance.now());
+        return;
+      }
       if (ph.kind === 'manual') {
         const time = performance.now() - ph.startTs;
         const r = redoRef.current;
@@ -203,7 +220,12 @@ export function TimerPage() {
   useEffect(() => {
     if (phase.kind !== 'solving' && phase.kind !== 'manual' && phase.kind !== 'ready') return;
     let raf = 0;
-    const tick = () => { setNow(performance.now()); raf = requestAnimationFrame(tick); };
+    const tick = () => {
+      const t = performance.now();
+      hintRef.current?.tick(t);
+      setNow(t);
+      raf = requestAnimationFrame(tick);
+    };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [phase.kind]);
@@ -238,6 +260,9 @@ export function TimerPage() {
     }
   })();
 
+  const hintView = phase.kind === 'solving' ? hintRef.current?.view() ?? null : null;
+  const revealHint = () => { hintRef.current?.reveal(); setNow(performance.now()); };
+
   const recent = solves.slice(-12);
   const best = counted.reduce<number | null>((b, s) => { const t = effectiveTime(s); return t !== null && (b === null || t < b) ? t : b; }, null);
 
@@ -254,6 +279,7 @@ export function TimerPage() {
         <div className="timer-center">
           <div className={`clock ${clockClass}`}>{clock}</div>
           <div className="status">{status}</div>
+          {hintView && <LLHintPanel view={hintView} arrows={settings.pllArrows ?? true} onReveal={revealHint} />}
           {phase.kind === 'scrambling' && last?.splits && <SplitsTable solve={last} compact />}
           {crossFollow && redo && (phase.kind === 'ready' || phase.kind === 'solving') && (
             <div className="alg-box cross-follow">
@@ -287,6 +313,14 @@ export function TimerPage() {
             <input type="checkbox" checked={settings.hideTimerWhileSolving} onChange={(e) => setSettings({ ...settings, hideTimerWhileSolving: e.target.checked })} />
             Hide time while solving
           </label>
+          <label className="toggle">
+            Last-layer hints
+            <select value={settings.llHints ?? '2look'} onChange={(e) => setSettings({ ...settings, llHints: e.target.value as HintStyle })}>
+              <option value="2look">2-look</option>
+              <option value="full">Full OLL/PLL</option>
+              <option value="off">Off</option>
+            </select>
+          </label>
         </div>
       </div>
 
@@ -299,6 +333,7 @@ export function TimerPage() {
                 <span className="n">{solves.length - i}.</span>
                 <span className="t">{formatTime(effectiveTime(s))}{s.penalty === '+2' ? '+' : ''}</span>
                 {s.redoOf && <span className="tag redo">redo</span>}
+                {s.hints?.length ? <span className="tag hint" title={s.hints.map((h) => h.caseId.replace(/^2L (OLL|PLL) /, '')).join(', ')}>hint</span> : null}
                 {s.splits && llCaseTags(s.splits).map((tag) => <span key={tag} className="tag">{tag}</span>)}
                 {s.moves && <span className="muted">{s.moves.length} moves · {(s.moves.length / ((s.time ?? 1) / 1000)).toFixed(1)} tps</span>}
               </button>
@@ -317,6 +352,36 @@ export function TimerPage() {
           onRedo={phase.kind === 'solving' ? undefined : (s, withCross) => { setDetail(null); startRedo(s, withCross); }}
         />
       )}
+    </div>
+  );
+}
+
+const TIER_LABEL = ['Hint (space)', 'Show the case (space)', 'Show the alg (space)'];
+
+/**
+ * Tiered last-layer hint while solving: nothing until the solver pauses (or presses space / taps),
+ * then the step and case name, the case picture, and finally the alg followed live.
+ */
+function LLHintPanel({ view, arrows, onReveal }: { view: HintView; arrows: boolean; onReveal: () => void }) {
+  const { hint, tier, follow } = view;
+  if (tier === 0) {
+    return <button className="ghost small ll-hint-ask" onClick={onReveal}>{TIER_LABEL[0]}</button>;
+  }
+  return (
+    <div className="alg-box ll-hint" data-tier={tier}>
+      <div className="step-hint-body">
+        {tier >= 2 && hint.diagram && (
+          <figure className="step-hint-case">
+            <LLDiagram state={hint.diagram.state} mode={hint.diagram.mode} size={110} arrows={arrows} />
+            <figcaption className="muted small">{hint.preAuf ? `look for this, after ${hint.preAuf}` : 'look for this'}</figcaption>
+          </figure>
+        )}
+        <div>
+          <div><span className="muted">{hint.stepLabel}:</span> <b>{hint.name}</b></div>
+          {tier === 3 && follow && <AlgFollowView follow={follow} otherLabel="alt" />}
+          {tier < 3 && <button className="link small" onClick={onReveal}>{TIER_LABEL[tier]}</button>}
+        </div>
+      </div>
     </div>
   );
 }

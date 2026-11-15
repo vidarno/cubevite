@@ -87,9 +87,24 @@ export function InsightsPage() {
               ))}
             </tbody>
           </table>
-        ) : <p className="muted small">No last-layer cases recognised yet (all skips?).</p>}
+        ) : <p className="muted small">{ins.hinted.length ? 'No last-layer cases solved without a hint yet.' : 'No last-layer cases recognised yet (all skips?).'}</p>}
         <p className="muted small">Sorted weakest first: total time compared with other cases of the same step, plus mid-algorithm pauses.</p>
       </section>
+
+      {ins.hinted.length > 0 && (
+        <section className="panel">
+          <h3>Hints used</h3>
+          <ul className="hinted-list">
+            {ins.hinted.map((h) => (
+              <li key={h.caseId}>
+                {h.name} <span className="muted">x{h.count}</span>
+                {h.drillId && <> · <button className="link" onClick={() => openTrainer(h.drillId!, [h.caseId])}>drill</button></>}
+              </li>
+            ))}
+          </ul>
+          <p className="muted small">Cases you needed a last-layer hint for on the Timer. Hinted steps are left out of the case times above.</p>
+        </section>
+      )}
 
       <section className="panel">
         <h3>Most frequent errors</h3>

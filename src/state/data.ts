@@ -1,3 +1,4 @@
+import type { HintStyle, SolveHint } from '../cube/llHint';
 import type { CfopSplits, TimedMove } from '../cube/cfop';
 import { createPersisted } from './storage';
 
@@ -15,6 +16,8 @@ export interface Solve {
   splits?: CfopSplits;
   /** Id of the solve whose start state this one redid (redos stay out of averages and insights). */
   redoOf?: string;
+  /** Last-layer hints shown during the solve (Timer). */
+  hints?: SolveHint[];
 }
 
 export const solvesStore = createPersisted<Solve[]>('cubevite.solves', []);
@@ -55,6 +58,8 @@ export interface Settings {
   crossMode?: CrossMode;
   /** Cross drill inspection limit in seconds (0 = none; default 15). */
   crossInspect?: number;
+  /** Timer: last-layer hints while solving (default 2-look). */
+  llHints?: HintStyle;
 }
 export type CrossMode = 'solve' | 'noLook' | 'plan';
 

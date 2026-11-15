@@ -57,6 +57,14 @@ describe('solveInsights', () => {
     expect(ins.pausePerSolve['mid-alg']).toBeCloseTo(1600 / 3);
   });
 
+  it('hinted LL steps stay out of the per-case times and are counted per case', () => {
+    const hinted = { ...solve([...F2L, SUNE, 'U', T], { 17: 9000 }), hints: [{ caseId: 'PLL T', stepLabel: 'PLL', tier: 2 as const, at: 17 }] };
+    const ins = solveInsights([hinted, solve([...F2L, SUNE, 'U', T], { 17: 1000 })]);
+    expect(ins.cases.find((c) => c.caseId === 'PLL T')).toMatchObject({ count: 1, recognition: 1200 });
+    expect(ins.cases.find((c) => c.caseId === 'OLL 27')!.count).toBe(2);
+    expect(ins.hinted).toEqual([{ caseId: 'PLL T', name: 'T-perm', count: 1, drillId: 'PLL' }]);
+  });
+
   it('frequent errors grouped by kind and stage, waste per solve', () => {
     const solves = [solve(["F R R' R", ...F2L.slice(1), SUNE, 'U', T]), solve(["F R R' R", ...F2L.slice(1), SUNE, 'U U U U U', T]), solve([...F2L, SUNE, 'U', T])];
     const ins = solveInsights(solves);

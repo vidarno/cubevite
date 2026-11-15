@@ -8,12 +8,15 @@ import { analysisOf } from './analysis';
 import { caseName } from './algId';
 import { algStartOf, DRILL_FOR_STEP, type PauseKind } from './pauses';
 import { coarseStage, type ErrorKind } from './errors';
+import type { SolveHint } from './llHint';
 
 export interface InsightSolve {
   start?: string;
   moves?: TimedMove[];
   splits?: CfopSplits;
   time: number | null;
+  /** LL hints shown during the solve (Timer). */
+  hints?: SolveHint[];
 }
 
 /** Recognition (step start → first alg move, pre-AUF included) and execution (→ step end) of one LL step, ms. */
@@ -63,7 +66,13 @@ export interface Insights {
   /** Mean pause time per solve by kind, and mean waste per solve. */
   pausePerSolve: Record<PauseKind, number>;
   wastePerSolve: { moves: number; ms: number };
+  /** Cases a hint was needed for (Timer LL hints), most often first. */
+  hinted: { caseId: string; name: string; count: number; drillId?: string }[];
 }
+
+/** Whether a hint was shown during an LL step (such steps stay out of the per-case times). */
+export const stepHinted = (step: Pick<LLStep, 'startMove' | 'endMove'>, hints: SolveHint[] = []) =>
+  hints.some((h) => h.at >= step.startMove && h.at < step.endMove);
 
 const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 const median = (xs: number[]) => {
@@ -103,6 +112,7 @@ export function solveInsights(solves: InsightSolve[], limit = 100): Insights {
   const stageRows: Record<StageName, number | null>[] = [];
   const pauseSum: Record<PauseKind, number> = { recognition: 0, lookahead: 0, 'mid-alg': 0 };
   let wasteMoves = 0, wasteMs = 0;
+  const hinted = new Map<string, { count: number; step: string }>();
 
   analysed.forEach(({ s, a }, si) => {
     const sp = a.splits;
@@ -110,7 +120,7 @@ export function solveInsights(solves: InsightSolve[], limit = 100): Insights {
     for (const step of sp.llSteps ?? []) {
       const t = stepTiming(step, s.moves!, sp.crossFace!);
       llRec += t.recognition;
-      if (!step.caseId) continue;
+      if (!step.caseId || stepHinted(step, s.hints)) continue;
       const c = perCase.get(step.caseId) ?? { kinds: [], rec: [], exec: [], midAlg: 0 };
       if (!c.kinds.includes(step.kind)) c.kinds.push(step.kind);
       c.rec.push(t.recognition);
@@ -120,6 +130,7 @@ export function solveInsights(solves: InsightSolve[], limit = 100): Insights {
     }
     stageRows.push(stageDurations(sp, s.time, llRec));
     for (const p of a.pauses) pauseSum[p.kind] += p.duration;
+    for (const h of s.hints ?? []) hinted.set(h.caseId, { count: (hinted.get(h.caseId)?.count ?? 0) + 1, step: h.stepLabel });
     wasteMoves += a.wastedMoves;
     wasteMs += a.wastedMs;
     for (const e of a.errors) {
@@ -155,6 +166,9 @@ export function solveInsights(solves: InsightSolve[], limit = 100): Insights {
     errors: [...errs.values()].map(({ seen: _seen, ...e }) => e).sort((a, b) => b.ms - a.ms || b.count - a.count),
     pausePerSolve: { recognition: pauseSum.recognition / n, lookahead: pauseSum.lookahead / n, 'mid-alg': pauseSum['mid-alg'] / n },
     wastePerSolve: { moves: wasteMoves / n, ms: wasteMs / n },
+    hinted: [...hinted.entries()]
+      .map(([caseId, h]) => ({ caseId, name: caseName(caseId), count: h.count, drillId: DRILL_FOR_STEP[h.step as LLStepKind] }))
+      .sort((a, b) => b.count - a.count),
   };
 }
 
