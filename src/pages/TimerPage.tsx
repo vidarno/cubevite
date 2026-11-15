@@ -16,7 +16,7 @@ import { SplitsTable } from '../components/SplitsTable';
 import { SolveDetail } from '../components/SolveDetail';
 import { AnalysisSummary } from '../components/SolveAnalysis';
 import { analysisOf, crossHold } from '../cube/analysis';
-import { LLHintTracker, type HintStyle, type HintView } from '../cube/llHint';
+import { DEFAULT_HINT_GAPS, LLHintTracker, tierDelays, type HintStyle, type HintView } from '../cube/llHint';
 import { LLDiagram } from '../components/LLDiagram';
 
 type Phase =
@@ -170,7 +170,7 @@ export function TimerPage() {
       const next: Phase = { kind: 'solving', startTs: ev.localTimestamp, startState: ev.prev, moves: [{ move: ev.move, t: 0 }], penalty };
       const st = settingsStore.get();
       const style: HintStyle = st.llHints ?? '2look';
-      hintRef.current = style === 'off' ? null : new LLHintTracker(style, st.noRotations ?? false, performance.now(), ev.prev);
+      hintRef.current = style === 'off' ? null : new LLHintTracker(style, st.noRotations ?? false, performance.now(), ev.prev, tierDelays(st.hintGaps));
       hintRef.current?.push(ev.move, ev.state, performance.now());
       setPhase(next);
       advanceCross(ev.move, ev.state);
@@ -321,6 +321,25 @@ export function TimerPage() {
               <option value="off">Off</option>
             </select>
           </label>
+          {(settings.llHints ?? '2look') !== 'off' && (
+            <div className="hint-gaps small muted">
+              {(['name', 'picture', 'alg'] as const).map((what, k) => {
+                const gaps = settings.hintGaps ?? DEFAULT_HINT_GAPS;
+                return (
+                  <label key={what}>
+                    {k ? `+ ${what}` : `${what} after`}
+                    <input type="number" min={0} max={60} step={1} value={gaps[k]} aria-label={`seconds before the hint ${what}`}
+                      onChange={(e) => {
+                        const next = [...gaps] as [number, number, number];
+                        next[k] = Math.max(0, Math.min(60, Number(e.target.value) || 0));
+                        setSettings({ ...settings, hintGaps: next });
+                      }} />
+                    s
+                  </label>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 

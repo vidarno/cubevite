@@ -40,7 +40,7 @@ try {
   assert.ok(await page.$('.ll-hint-ask'), 'hint button while the hint is hidden');
   assert.equal(await page.$('.ll-hint'), null, 'no hint before a pause');
 
-  await page.waitForTimeout(2300); // idle: tier 1 shows on its own
+  await page.waitForTimeout(5300); // idle: tier 1 shows on its own (default 5 s)
   const t1 = await page.textContent('.ll-hint');
   assert.match(t1, /PLL corners:\s*Headlights/, `tier 1 names the step and case (${t1})`);
   assert.equal(await page.$('.ll-hint svg'), null, 'tier 1: no picture yet');

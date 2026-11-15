@@ -24,7 +24,8 @@ const arrowsFor = (state: string) => {
 
 /**
  * OLL: U-colour stickers yellow, rest grey. PLL: full colours.
- * EO / CP (2-look step 1): like OLL / PLL but only edges / only corners; the other pieces are blanked.
+ * EO / CP (2-look step 1): like OLL / PLL but only edges / only corners; the other pieces are blanked
+ * (CP keeps the whole top face: after OLL it is all yellow).
  * F2L: isometric front-right slot picture (see F2LDiagram).
  */
 export type DiagramMode = 'OLL' | 'PLL' | 'EO' | 'CP' | 'F2L';
@@ -43,7 +44,7 @@ export function LLDiagram({ state, mode, size = 96, arrows = false }: {
   const color = (i: number) => {
     const c = state[i];
     const corner = CORNER_STICKERS.has(i);
-    if (i !== CENTRE && ((mode === 'EO' && corner) || (mode === 'CP' && !corner))) return 'var(--c-blank)';
+    if (i !== CENTRE && ((mode === 'EO' && corner) || (mode === 'CP' && !corner && i > 8))) return 'var(--c-blank)';
     if (mode === 'OLL' || mode === 'EO') return c === 'U' ? 'var(--c-yellow)' : 'var(--c-gray)';
     return PLL_COLORS[c];
   };

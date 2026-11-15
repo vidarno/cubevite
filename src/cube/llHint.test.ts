@@ -5,7 +5,7 @@ import { CASE_BY_ID, OLL, PLL } from './algs';
 import { toFaceTurns } from './faceTurns';
 import { toCubeFrame } from './drills';
 import { randomStateForCase } from './twoLook';
-import { f2lFace, llHintFor, LLHintTracker, TIER_DELAYS } from './llHint';
+import { f2lFace, llHintFor, LLHintTracker, TIER_DELAYS, tierDelays } from './llHint';
 
 const run = (s: string, alg: string) => normalizeCenters(applyAlg(s, alg));
 const AUF = ['', 'U', 'U2', "U'"];
@@ -63,6 +63,19 @@ describe('llHintFor', () => {
       expect(h.caseId).toBe('PLL Ua');
       expect(isF2LSolved(orientCrossDown(s, face), 'D')).toBe(true);
     }
+  });
+});
+
+describe('tierDelays', () => {
+  it('turns gaps in seconds into cumulative idle ms (default 5 / 5 / 5)', () => {
+    expect(TIER_DELAYS).toEqual([5000, 10000, 15000]);
+    expect(tierDelays([3, 0, 4])).toEqual([3000, 3000, 7000]);
+  });
+
+  it('a tracker with custom delays', () => {
+    const tr = new LLHintTracker('full', false, 0, llState('PLL T'), tierDelays([1, 1, 1]));
+    expect(tr.tick(999)).toBe(0);
+    expect(tr.tick(3000)).toBe(3);
   });
 });
 

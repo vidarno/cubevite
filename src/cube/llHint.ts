@@ -18,8 +18,16 @@ export type HintStyle = 'off' | '2look' | 'full';
 /** 0 = hidden, 1 = step + case name, 2 = + picture, 3 = + alg (followed live). */
 export type HintTier = 0 | 1 | 2 | 3;
 
-/** Idle ms (no turns) after which each tier shows on its own: tier k at TIER_DELAYS[k-1]. */
-export const TIER_DELAYS = [2000, 4000, 7000] as const;
+/** Default seconds between tiers: name after 5 s of no turns, picture 5 s later, alg 5 s after that. */
+export const DEFAULT_HINT_GAPS: [number, number, number] = [5, 5, 5];
+
+/** Idle ms after which each tier shows (tier k at delays[k-1]) from the gaps in seconds between tiers. */
+export function tierDelays(gaps: readonly number[] = DEFAULT_HINT_GAPS): number[] {
+  let t = 0;
+  return [0, 1, 2].map((k) => (t += Math.max(0, gaps[k] ?? DEFAULT_HINT_GAPS[k]) * 1000));
+}
+
+export const TIER_DELAYS = tierDelays();
 
 export interface LLHint extends StepHint {
   stage: 'OLL' | 'PLL';
@@ -133,8 +141,10 @@ export class LLHintTracker {
 
   private style: HintStyle;
   private noRotations: boolean;
+  private delays: readonly number[];
 
-  constructor(style: HintStyle, noRotations = false, startedAt = 0, startState?: string) {
+  constructor(style: HintStyle, noRotations = false, startedAt = 0, startState?: string, delays: readonly number[] = TIER_DELAYS) {
+    this.delays = delays;
     this.style = style;
     this.noRotations = noRotations;
     this.lastMoveAt = startedAt;
@@ -189,7 +199,7 @@ export class LLHintTracker {
     const c = this.cur;
     if (!c) return 0;
     const idle = now - this.lastMoveAt;
-    const auto = TIER_DELAYS.filter((d) => idle >= d).length as HintTier;
+    const auto = this.delays.filter((d) => idle >= d).length as HintTier;
     this.setTier(auto);
     return this.cur!.tier;
   }

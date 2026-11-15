@@ -60,6 +60,8 @@ export interface Settings {
   crossInspect?: number;
   /** Timer: last-layer hints while solving (default 2-look). */
   llHints?: HintStyle;
+  /** Timer: seconds without a turn before the hint name, then before the picture, then the alg (default 5/5/5). */
+  hintGaps?: [number, number, number];
 }
 export type CrossMode = 'solve' | 'noLook' | 'plan';
 
