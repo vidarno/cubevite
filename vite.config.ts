@@ -1,5 +1,6 @@
 /// <reference types="vitest/config" />
 import react from '@vitejs/plugin-react'
+import { execSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
@@ -32,9 +33,24 @@ function serviceWorker(): Plugin {
   }
 }
 
+/** Short commit hash of the build (shown in the footer, so you can tell which version is live). */
+function commitHash(): string {
+  try {
+    const sha = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim()
+    const dirty = execSync('git status --porcelain', { encoding: 'utf8' }).trim() !== ''
+    return dirty ? `${sha}+` : sha
+  } catch {
+    return 'unknown'
+  }
+}
+
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [react(), serviceWorker()],
+  define: {
+    __APP_COMMIT__: JSON.stringify(command === 'build' ? commitHash() : 'dev'),
+    __APP_BUILT__: JSON.stringify(new Date().toISOString()),
+  },
   build: {
     // cubing.js in its own chunk: otherwise its shared code lands in the app's entry chunk, and the
     // scramble/search worker (which imports that shared code) runs the whole React app on load and
@@ -50,4 +66,4 @@ export default defineConfig({
     // Some cube tests check thousands of random states; CI runners are a few times slower than a laptop.
     testTimeout: 30_000,
   },
-})
+}))

@@ -9,6 +9,7 @@ import { useCube } from './state/cubeStore';
 import { useLoop } from './state/loop';
 import { AlgLoop } from './components/AlgLoop';
 import { applyUpdate, useUpdateReady } from './pwa';
+import { APP_COMMIT, versionLabel } from './version';
 
 type Tab = 'timer' | 'trainer' | 'algs' | 'insights';
 const TABS: { id: Tab; label: string }[] = [
@@ -69,7 +70,12 @@ export default function App() {
         <a href="https://github.com/cubing/cubing.js" target="_blank" rel="noreferrer">cubing.js</a> (MPL-2.0, unmodified) and{' '}
         <a href="https://github.com/afedotov/gan-web-bluetooth" target="_blank" rel="noreferrer">gan-web-bluetooth</a> (MIT) ·{' '}
         <a href={`${import.meta.env.BASE_URL}third-party-licenses.md`} target="_blank" rel="noreferrer">Third-party licences</a>
-        {' '}· not affiliated with GAN
+        {' '}· not affiliated with GAN ·{' '}
+        <span className="app-version" title="Build: commit and build time">
+          {/^[0-9a-f]+$/.test(APP_COMMIT)
+            ? <a href={`https://github.com/vidarno/cubevite/commit/${APP_COMMIT}`} target="_blank" rel="noreferrer">{versionLabel()}</a>
+            : versionLabel()}
+        </span>
       </footer>
     </div>
   );

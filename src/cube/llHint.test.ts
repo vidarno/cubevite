@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyAlg, applyMove, isSolved, normalizeCenters, SOLVED, tokenize, type Face } from './facelets';
-import { caseState, isF2LSolved, orientCrossDown } from './cfop';
+import { caseState, isF2LSolved, isLLOriented, orientCrossDown } from './cfop';
 import { CASE_BY_ID, OLL, PLL } from './algs';
 import { toFaceTurns } from './faceTurns';
 import { toCubeFrame } from './drills';
@@ -125,8 +125,10 @@ describe('LLHintTracker', () => {
     const h = tr.view()!.hint;
     for (const m of turns(`${h.preAuf} ${h.alg}`)) { s = applyMove(s, m); tr.push(m, s, 200); }
     const v = tr.view();
-    if (v) { // not an OCLL skip
-      expect(v.hint.stepLabel).toBe('OCLL');
+    if (v) { // null if the LL is solved up to AUF
+      // Random state: corners can come out oriented (OCLL skip), then the next step is a PLL one.
+      if (isLLOriented(s, 'D')) expect(v.hint.stage).toBe('PLL');
+      else expect(v.hint.stepLabel).toBe('OCLL');
       expect(v.tier).toBe(0);
     }
     expect(tr.used()).toEqual([{ caseId: '2L OLL Line', stepLabel: 'OLL edges', tier: 1, at: 0 }]);
