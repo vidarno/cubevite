@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { DRILLS, recentAvg, type DrillCase } from '../cube/drills';
 import { drillById, learningDrill, weakestDrill } from '../cube/learningPath';
 import { useCube } from '../state/cubeStore';
-import { caseStatsStore, crossLogStore, formatTime, learnStore, trainerExcluded, settingsStore, trainerDrillStore, trainerSelection, weakestStore } from '../state/data';
+import { caseStatsStore, crossLogStore, formatTime, learnStore, trainerExcluded, settingsStore, srsStore, trainerDrillStore, trainerSelection, weakestStore } from '../state/data';
+import { dueIn, dueIds } from '../cube/srs';
 import { usePersisted } from '../state/storage';
 import type { CrossAttempt } from '../state/data';
 import { LLDiagram } from '../components/LLDiagram';
@@ -40,6 +41,14 @@ export function TrainerPage() {
   const groups = useMemo(() => [...new Set(drills.map((d) => d.group))], [drills]);
   const pool = useMemo(() => drill.cases.filter((c) => chosen.includes(c.id)), [drill, chosen]);
   const hasCases = drill.cases.length > 0;
+  const [srs] = usePersisted(srsStore);
+  const srsOn = settings.srs ?? true;
+  /** Spaced repetition applies to case drills (not cross levels). */
+  const reviews = hasCases && drill.kind !== 'cross';
+  // Re-read the clock when the deck changes or a run ends (due times move on in between, which is fine).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const now = useMemo(() => Date.now(), [srs, running]);
+  const nDue = reviews ? dueIds(pool.map((c) => c.id), srs, now).length : 0;
 
   const toggle = (id: string) => drill.dynamicCases
     ? setExcluded((e) => {
@@ -75,6 +84,12 @@ export function TrainerPage() {
                 <button className="ghost small" onClick={() => selectWhere((c) => learn[c.id] === 'learning')}>Learning</button>
               )}
               <button className="ghost small" onClick={() => selectWhere(() => false)}>None</button>
+              {reviews && (
+                <label className="toggle small" title="Spaced repetition: cases you're due to review come first (missed ones right away, known ones after hours or days)">
+                  <input type="checkbox" checked={srsOn} onChange={(e) => setSettings((s) => ({ ...s, srs: e.target.checked }))} />
+                  Due first
+                </label>
+              )}
               {drill.cases.some((c) => c.diagram?.mode === 'PLL' || c.diagram?.mode === 'CP') && (
                 <label className="toggle small">
                   <input type="checkbox" checked={arrows} onChange={(e) => setSettings((s) => ({ ...s, pllArrows: e.target.checked }))} />
@@ -85,8 +100,11 @@ export function TrainerPage() {
             <div className="case-grid">
               {drill.cases.map((cs) => {
                 const a = recentAvg(stats[cs.id]?.times ?? []);
+                const card = srs[cs.id];
+                const due = reviews && srsOn && card && card.due <= now;
                 return (
-                  <button key={cs.id} className={`case-tile ${chosen.includes(cs.id) ? 'selected' : ''}`} onClick={() => toggle(cs.id)}>
+                  <button key={cs.id} className={`case-tile ${chosen.includes(cs.id) ? 'selected' : ''} ${due ? 'due' : ''}`} onClick={() => toggle(cs.id)}
+                    title={reviews && card ? `Review ${dueIn(card, now) === 'now' ? 'due now' : `in ${dueIn(card, now)}`} (box ${card.box})` : undefined}>
                     {cs.diagram && <LLDiagram state={cs.diagram.state} mode={cs.diagram.mode} size={56} arrows={arrows} />}
                     <span className="case-name">{cs.label}</span>
                     {a !== null && <span className="case-time">{formatTime(a)}</span>}
@@ -120,6 +138,12 @@ export function TrainerPage() {
                 ? 'The app gives you a setup sequence (disguised, from whatever state your cube is in). Once set up, the timer starts on your first turn and stops as soon as the case is solved.'
                 : 'No smart cube connected: flashcard mode. Recognise the case, press space to reveal the algorithm, space again for the next one.'}
             </p>
+            {reviews && srsOn && pool.length > 0 && (
+              <p className="muted" data-testid="srs-due">
+                {nDue ? `${nDue} of ${pool.length} selected case${pool.length === 1 ? '' : 's'} due for review (new and missed ones included); they come first.`
+                  : 'Nothing due for review: cases come up weighted by your times.'}
+              </p>
+            )}
             <button className="primary big" disabled={(hasCases || drill.dynamicCases) && !pool.length} onClick={() => setRunning(true)}>
               {hasCases ? `Start (${pool.length} ${drill.kind === 'cross' ? 'level' : 'case'}${pool.length === 1 ? '' : 's'})` : 'Start'}
             </button>

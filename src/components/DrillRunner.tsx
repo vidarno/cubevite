@@ -17,7 +17,10 @@ import { caseAlgList } from '../cube/preferred';
 import { Follower, type FollowProgress } from '../cube/follow';
 import { movesBetween } from '../cube/solver';
 import { cubeStore, useCube } from '../state/cubeStore';
-import { caseStatsStore, crossLogStore, formatTime, settingsStore, type CrossMode } from '../state/data';
+import { caseStatsStore, crossLogStore, formatTime, settingsStore, srsStore, type CrossMode } from '../state/data';
+import { quarterTurns } from '../cube/algLoop';
+import { targetMsFor } from '../cube/learningPath';
+import { gradeAttempt, pickDue, reviewed, type Attempt } from '../cube/srs';
 import { openLoop, loopStore, useLoop } from '../state/loop';
 import { usePersisted } from '../state/storage';
 import { AlgFollowView } from './AlgFollowView';
@@ -55,6 +58,15 @@ function logCross(o: CrossOutcome, mode: CrossMode, redo: boolean) {
   }].slice(-500));
 }
 
+/** Spaced repetition: grade a timed case attempt and reschedule it. */
+function recordReview(caseId: string, a: Omit<Attempt, 'targetMs'>) {
+  srsStore.set((d) => reviewed(d, caseId, gradeAttempt({ ...a, targetMs: targetMsFor(caseId) }), Date.now()));
+}
+
+/** Turns beyond the shortest plan being followed (null without a follow). */
+const extraMoves = (f: AlgFollow | null, moves: number) =>
+  f?.plans.length ? moves - Math.min(...f.plans.map((p) => quarterTurns(`${p.preAuf} ${p.alg} ${p.postAuf}`))) : undefined;
+
 function recordTime(key: string, ms: number) {
   caseStatsStore.set((s) => {
     const prev = s[key] ?? { times: [], attempts: 0 };
@@ -72,8 +84,14 @@ export function DrillRunner({ drill, pool, onStop }: { drill: Drill; pool: Drill
   const noRotations = settings.noRotations ?? false;
   const algText = (alg: string) => (noRotations ? withoutRotations(alg) : alg);
   const [revealed, setRevealed] = useState(false);
+  /** The alg was asked for in the current attempt (it grades as "again"). */
+  const revealedRef = useRef(false);
+  const reveal = useCallback(() => { revealedRef.current = true; setRevealed(true); }, []);
   /** Step index whose hint was requested. */
   const [hintStep, setHintStep] = useState<number | null>(null);
+  /** Steps whose hint was asked for in the current attempt (they grade as "again"). */
+  const hintedSteps = useRef(new Set<number>());
+  const askHint = (step: number | null) => { if (step !== null) hintedSteps.current.add(step); setHintStep(step); };
   const [run, setRun] = useState<Run | null>(null);
   const [follow, setFollow] = useState<FollowProgress | null>(null);
   const followerRef = useRef<Follower | null>(null);
@@ -102,7 +120,9 @@ export function DrillRunner({ drill, pool, onStop }: { drill: Drill; pool: Drill
   /** Set up a new start state for `c`, or (redo) the given one again, preferring to undo `log` if that's shorter. */
   const startCase = useCallback(async (c: DrillCase | null, again?: { target: string; log: string[]; redo: Redo }) => {
     setRevealed(false);
+    revealedRef.current = false;
     setHintStep(null);
+    hintedSteps.current = new Set();
     const target = again?.target ?? drill.pickTarget(c);
     const redo = again?.redo;
     const r: Run = { phase: 'setup', c, target, redo };
@@ -130,7 +150,9 @@ export function DrillRunner({ drill, pool, onStop }: { drill: Drill; pool: Drill
   const next = useCallback(() => {
     if (!drill.cases.length) { startCase(null); return; }
     if (!pool.length) return;
-    startCase(pickCase(pool, caseStatsStore.get(), runRef.current?.c?.id));
+    const prev = runRef.current?.c?.id;
+    const due = (settingsStore.get().srs ?? true) ? pickDue(pool, srsStore.get(), Date.now(), prev) : null;
+    startCase(due ?? pickCase(pool, caseStatsStore.get(), prev));
   }, [drill, pool, startCase]);
 
   // Start on mount.
@@ -194,9 +216,18 @@ export function DrillRunner({ drill, pool, onStop }: { drill: Drill; pool: Drill
         setLast({ c: r.c });
         // Redos are practice on a known state: they don't count towards case stats.
         if (!r.redo) recordTime(statsKey(drill, r.c), elapsed);
+        // Case drills feed spaced repetition (cross levels and full-F2L pairs aren't cases to review).
+        if (!r.redo && r.c && !drill.kind) {
+          recordReview(r.c.id, { ms: elapsed, revealed: revealedRef.current, extraMoves: extraMoves(solving.follow, moves) });
+        }
         // Multi-step drills also feed per-case stats for each recognised step (e.g. "OLL 26" from 2-look OLL).
         if (drill.steps.length > 1 && !r.redo) {
-          hints.forEach((h, i) => { if (h && h.caseId !== 'AUF') recordTime(h.caseId, splits[i] - (i ? splits[i - 1] : 0)); });
+          hints.forEach((h, i) => {
+            if (!h || h.caseId === 'AUF') return;
+            const ms = splits[i] - (i ? splits[i - 1] : 0);
+            recordTime(h.caseId, ms);
+            recordReview(h.caseId, { ms, revealed: hintedSteps.current.has(i) });
+          });
         }
       } else {
         setRun({ ...solving, moves, log, step, splits, hints, follow, times, stepStates });
@@ -251,11 +282,11 @@ export function DrillRunner({ drill, pool, onStop }: { drill: Drill; pool: Drill
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== 'Space' || !runRef.current) return;
       e.preventDefault();
-      if (!revealed) setRevealed(true); else next();
+      if (!revealed) reveal(); else next();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [smart, revealed, next]);
+  }, [smart, revealed, next, reveal]);
 
   if (!run) return null;
   if (!smart && !drill.cases.length) {
@@ -445,7 +476,7 @@ export function DrillRunner({ drill, pool, onStop }: { drill: Drill; pool: Drill
             )
           ) : (
             <>
-              <button className="ghost" onClick={() => setRevealed(true)}>Show algorithm {smart ? '' : '(space)'}</button>
+              <button className="ghost" onClick={reveal}>Show algorithm {smart ? '' : '(space)'}</button>
               {undoTipView}
             </>
           )}
@@ -476,7 +507,7 @@ export function DrillRunner({ drill, pool, onStop }: { drill: Drill; pool: Drill
             </div>
           ) : (
             <>
-              <button className="ghost" onClick={() => setHintStep(curStep)}>Hint</button>
+              <button className="ghost" onClick={() => askHint(curStep)}>Hint</button>
               {undoTipView}
             </>
           )}

@@ -6,7 +6,8 @@ import { useCube } from '../state/cubeStore';
 import { useState } from 'react';
 import { caseKind, validateCaseAlg } from '../cube/algValidate';
 import { caseAlgList, customAlgs, withCustom, withoutCustom, withPreferred } from '../cube/preferred';
-import { algPrefsStore, caseStatsStore, formatTime, learnStore, loopStatsStore, settingsStore, type LearnStatus } from '../state/data';
+import { algPrefsStore, caseStatsStore, formatTime, learnStore, loopStatsStore, settingsStore, srsStore, type LearnStatus } from '../state/data';
+import { dueIn } from '../cube/srs';
 import { openLoop } from '../state/loop';
 import { usePersisted } from '../state/storage';
 import { LLDiagram } from './LLDiagram';
@@ -21,6 +22,10 @@ export function AlgCard({ id, title, alg, alts, diagram, arrows, suggested }: {
   const [learn, setLearn] = usePersisted(learnStore);
   const [stats] = usePersisted(caseStatsStore);
   const [loopStats] = usePersisted(loopStatsStore);
+  const [srs] = usePersisted(srsStore);
+  const card = srs[id];
+  const [openedAt] = useState(() => Date.now());
+  const due = card ? dueIn(card, Math.max(openedAt, card.last)) : '';
   const [settings] = usePersisted(settingsStore);
   const text = (a: string) => (settings.noRotations ? withoutRotations(a) : a);
   const smart = useCube().status === 'connected';
@@ -77,6 +82,11 @@ export function AlgCard({ id, title, alg, alts, diagram, arrows, suggested }: {
             <button type="button" className="ghost small" onClick={() => { setAdding(false); setError(null); }}>Cancel</button>
             {error && <div className="error small" role="alert">{error}</div>}
           </form>
+        )}
+        {card && (
+          <div className="muted small" data-testid="srs" title="Spaced repetition: when the trainer brings this case up again">
+            review {due === 'now' ? 'due now' : `in ${due}`} · box {card.box}{card.lapses ? ` · missed ${card.lapses}×` : ''}
+          </div>
         )}
         {ls?.reps ? (
           <div className="muted small" title="Alg loop: mean of the last 5 clean reps · best rep · reps">

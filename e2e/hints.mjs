@@ -71,6 +71,8 @@ try {
   const hints = await page.evaluate(() => JSON.parse(localStorage.getItem('cubevite.solves'))[0].hints);
   assert.equal(hints.length, 1, 'one hint stored');
   assert.deepEqual([hints[0].caseId, hints[0].stepLabel, hints[0].tier], ['2L PLL Headlights', 'PLL corners', 3]);
+  const srs = await page.evaluate(() => JSON.parse(localStorage.getItem('cubevite.srs') ?? '{}'));
+  assert.equal(srs['2L PLL Headlights']?.box, 0, 'hinted case is due for review again');
   await shot('hints-3-history');
 
   await page.goto(`${BASE}/#insights`);

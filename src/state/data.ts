@@ -2,6 +2,7 @@ import type { HintStyle, SolveHint } from '../cube/llHint';
 import type { CfopSplits, TimedMove } from '../cube/cfop';
 import { createPersisted } from './storage';
 import { setAlgPrefs, type AlgPrefs } from '../cube/preferred';
+import type { SrsDeck } from '../cube/srs';
 
 export interface Solve {
   id: string;
@@ -61,6 +62,8 @@ export interface Settings {
   crossInspect?: number;
   /** Timer: last-layer hints while solving (default 2-look). */
   llHints?: HintStyle;
+  /** Trainer: due cases first (spaced repetition; default on). */
+  srs?: boolean;
   /** Timer: seconds without a turn before the hint name, then before the picture, then the alg (default 5/5/5). */
   hintGaps?: [number, number, number];
 }
@@ -84,6 +87,9 @@ export interface LoopStats { times: number[]; reps: number; best: number | null 
 export const algPrefsStore = createPersisted<AlgPrefs>('cubevite.algPrefs', {});
 setAlgPrefs(algPrefsStore.get());
 algPrefsStore.subscribe(() => setAlgPrefs(algPrefsStore.get()));
+
+/** Spaced-repetition boxes per case id (trainer grades, Timer hints). */
+export const srsStore = createPersisted<SrsDeck>('cubevite.srs', {});
 
 export const loopStatsStore = createPersisted<Record<string, LoopStats>>('cubevite.loopStats', {});
 

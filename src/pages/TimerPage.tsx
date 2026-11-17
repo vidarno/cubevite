@@ -4,7 +4,8 @@ import { Follower, type FollowProgress } from '../cube/follow';
 import { analyzeSolve, llCaseTags, type TimedMove } from '../cube/cfop';
 import { movesBetween, randomScramble } from '../cube/solver';
 import { cubeStore, useCube } from '../state/cubeStore';
-import { averageOf, countedSolves, effectiveTime, formatTime, settingsStore, solvesStore, type Solve } from '../state/data';
+import { averageOf, countedSolves, effectiveTime, formatTime, settingsStore, solvesStore, srsStore, type Solve } from '../state/data';
+import { reviewed } from '../cube/srs';
 import { crossPlans, pushAlgFollow, startAlgFollow, type AlgFollow } from '../cube/drills';
 import { isCrossSolved } from '../cube/cfop';
 import { shortestWayBack, undoAlg } from '../cube/redo';
@@ -138,6 +139,11 @@ export function TimerPage() {
     const r = redoRef.current;
     const hints = hintRef.current?.used() ?? [];
     hintRef.current = null;
+    // Spaced repetition: a case you needed a hint for is due again (name only: kept in its box).
+    if (hints.length && !r) {
+      const now = Date.now();
+      srsStore.set((d) => hints.reduce((acc, h) => reviewed(acc, h.caseId, h.tier === 1 ? 'hard' : 'again', now), d));
+    }
     saveSolve({
       id: uid(), date: Date.now(), scramble: scrambleRef.current, time, smart: true,
       start: p.startState, moves: p.moves, splits, penalty: p.penalty,

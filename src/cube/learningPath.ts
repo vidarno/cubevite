@@ -132,7 +132,7 @@ export function learningDrill(learn: LearnMap): Drill {
     id: LEARNING_DRILL_ID,
     label: 'My learning cases',
     group: 'Learning path',
-    description: 'Every case marked "learning" on the Algorithms page, mixed. Slow and new cases come up more often.',
+    description: 'Every case marked "learning" on the Algorithms page, mixed. Due cases come first (spaced repetition), then slow and new ones more often.',
   }, ids);
 }
 
@@ -144,6 +144,16 @@ export function weakestDrill(caseIds: string[]): Drill {
     group: 'Learning path',
     description: 'The last-layer cases that cost you the most time in your recent solves (from Insights), mixed.',
   }, caseIds);
+}
+
+/** Default target for cases outside the learning path (F2L cases). */
+export const DEFAULT_TARGET_MS = 5000;
+let targetIndex: Map<string, number> | null = null;
+
+/** Target time for a case (spaced-repetition grading): its learning-path stage threshold. */
+export function targetMsFor(caseId: string): number {
+  targetIndex ??= new Map(LEARNING_PATH.flatMap((st) => stageItems(st).map((i) => [i.c.id, st.thresholdMs] as const)).reverse());
+  return targetIndex.get(caseId) ?? DEFAULT_TARGET_MS;
 }
 
 /** Drill by id, including the dynamic learning / weakest drills. */
