@@ -1,9 +1,12 @@
-/** One algorithm case: diagram, alg (+ alternatives), stats and learn-status pills. */
+/** One algorithm case: diagram, algs (preferred first; pick another or add your own), stats and learn-status pills. */
 import type { CaseDiagram } from '../cube/drills';
 import { recentAvg } from '../cube/drills';
 import { withoutRotations } from '../cube/faceTurns';
 import { useCube } from '../state/cubeStore';
-import { caseStatsStore, formatTime, learnStore, loopStatsStore, settingsStore, type LearnStatus } from '../state/data';
+import { useState } from 'react';
+import { caseKind, validateCaseAlg } from '../cube/algValidate';
+import { caseAlgList, customAlgs, withCustom, withoutCustom, withPreferred } from '../cube/preferred';
+import { algPrefsStore, caseStatsStore, formatTime, learnStore, loopStatsStore, settingsStore, type LearnStatus } from '../state/data';
 import { openLoop } from '../state/loop';
 import { usePersisted } from '../state/storage';
 import { LLDiagram } from './LLDiagram';
@@ -25,6 +28,19 @@ export function AlgCard({ id, title, alg, alts, diagram, arrows, suggested }: {
   const st = stats[id];
   const status = learn[id] ?? 'new';
   const avg = recentAvg(st?.times ?? []);
+  const [prefs, setPrefs] = usePersisted(algPrefsStore);
+  const list = caseAlgList({ id, alg, alts }, prefs);
+  const own = customAlgs(id, prefs);
+  const canOwn = caseKind(id) !== null;
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const save = () => {
+    const r = validateCaseAlg({ id, alg }, draft);
+    if (!r.ok) { setError(r.error); return; }
+    setPrefs((p) => ([alg, ...(alts ?? [])].includes(r.alg) ? withPreferred(p, id, r.alg, alg) : withCustom(p, id, r.alg)));
+    setAdding(false);
+  };
   return (
     <div className={`alg-card status-${status}`} data-case={id}>
       <LLDiagram state={diagram.state} mode={diagram.mode} size={88} arrows={arrows} />
@@ -37,8 +53,31 @@ export function AlgCard({ id, title, alg, alts, diagram, arrows, suggested }: {
             </span>
           ) : null}
         </div>
-        <div className="mono alg">{text(alg)}</div>
-        {alts?.map((a) => <div key={a} className="mono small muted">{text(a)}</div>)}
+        {list.map((a, k) => (
+          <div key={a} className={`alg-line ${k === 0 ? 'first' : ''}`} data-alg={a}>
+            <span className={k === 0 ? 'mono alg' : 'mono small muted'}>{text(a)}</span>
+            {(k === 0 ? list.length > 1 || own.includes(a) : true) && (
+              <span className="alg-tags small muted">
+                {k === 0 && list.length > 1 && <span title="Shown, followed and looped first">{a === alg ? 'main' : 'your pick'}</span>}
+                {own.includes(a) && <span>own</span>}
+                {k > 0 && <button className="link-btn" title="Show, follow and loop this alg first"
+                  onClick={() => setPrefs((p) => withPreferred(p, id, a, alg))}>use</button>}
+                {own.includes(a) && <button className="link-btn" title="Remove this alg" aria-label="Remove own alg"
+                  onClick={() => setPrefs((p) => withoutCustom(p, id, a))}>×</button>}
+              </span>
+            )}
+          </div>
+        ))}
+        {adding && (
+          <form className="own-alg" onSubmit={(e) => { e.preventDefault(); save(); }}>
+            <input type="text" className="mono" autoFocus value={draft} placeholder="Your alg, e.g. R U R' U'" aria-label="Own alg"
+              onChange={(e) => { setDraft(e.target.value); setError(null); }}
+              onKeyDown={(e) => { if (e.key === 'Escape') { setAdding(false); setError(null); } }} />
+            <button type="submit" className="small">Save</button>
+            <button type="button" className="ghost small" onClick={() => { setAdding(false); setError(null); }}>Cancel</button>
+            {error && <div className="error small" role="alert">{error}</div>}
+          </form>
+        )}
         {ls?.reps ? (
           <div className="muted small" title="Alg loop: mean of the last 5 clean reps · best rep · reps">
             loop: {formatTime(recentAvg(ls.times))} avg · {formatTime(ls.best)} best · {ls.reps} reps
@@ -50,7 +89,10 @@ export function AlgCard({ id, title, alg, alts, diagram, arrows, suggested }: {
           ))}
           {alg && (
             <button className="pill loop-btn" disabled={!smart} title={smart ? 'Repeat this alg back-to-back, no setup' : 'Connect a smart cube (or the virtual cube) to loop'}
-              onClick={() => openLoop({ id, title, algs: [alg, ...(alts ?? [])], diagram })}>loop</button>
+              onClick={() => openLoop({ id, title, algs: list, diagram })}>loop</button>
+          )}
+          {alg && !adding && canOwn && (
+            <button className="pill" title="Add your own alg for this case (checked against the case)" aria-label="Add own alg" onClick={() => { setDraft(''); setAdding(true); }}>+ alg</button>
           )}
           {suggested && <span className="pill suggest" title="Mean of the last 5 times is under the stage target">fast enough: learned?</span>}
         </div>

@@ -13,6 +13,7 @@ import { undoAlg } from './redo';
 import { CROSS_DOWN_ROTATION, faceMapFor, mapMove } from './display';
 import { applyAlg, invertAlg, isSolved, normalizeCenters, tokenize, type Face } from './facelets';
 import { withoutRotations } from './faceTurns';
+import { caseAlgList } from './preferred';
 import { Follower, type FollowProgress } from './follow';
 import { aufToSolve, llCornersPermuted, llEdgesOriented } from './states';
 import {
@@ -172,9 +173,13 @@ export function twoLookHint(id: TwoLookStepId, s: string): StepHint | null {
     return { caseId: 'AUF', name: 'Skip (AUF only)', alg: '', preAuf: '', postAuf: aufToSolve(s) ?? '' };
   }
   if (!r || r === 'skip') return null;
+  // Preferred alg first (the main alg always matches: it's what recognised the case).
+  const [main, ...alts] = caseAlgList(r.case).flatMap((alg) => {
+    const m = alg === r.case.alg ? { preAuf: r.preAuf, postAuf: r.postAuf } : matchAlg(id, s, alg);
+    return m ? [{ alg, ...m }] : [];
+  });
   return {
-    caseId: r.case.id, name: caseTitle(r.case), alg: r.case.alg, preAuf: r.preAuf, postAuf: r.postAuf,
-    alts: r.case.alts?.flatMap((alg) => { const m = matchAlg(id, s, alg); return m ? [{ alg, ...m }] : []; }),
+    caseId: r.case.id, name: caseTitle(r.case), ...main, alts: alts.length ? alts : undefined,
     diagram: { state: caseState(r.case), mode: STEP_DIAGRAM[id] },
   };
 }
@@ -300,15 +305,14 @@ export function advanceSteps(drill: Drill, state: string, from: number, c?: Dril
 export interface AlgPlan { alg: string; preAuf: string; postAuf: string }
 
 /**
- * How each of a case's algs (main first, then alternatives) solves `state` (cube frame) for a
+ * How each of a case's algs (preferred first, then main, alternatives and own algs) solves `state` (cube frame) for a
  * single-step case drill: the pre-AUF that makes it work, plus a post-AUF if the step needs one.
  */
 export function casePlans(drill: Drill, c: DrillCase, state: string): AlgPlan[] {
   const step = drill.steps[drill.steps.length - 1];
   const s = toCrossDown(state);
   const plans: AlgPlan[] = [];
-  for (const alg of [c.alg, ...(c.alts ?? [])]) {
-    if (!alg) continue;
+  for (const alg of caseAlgList(c)) {
     found: for (const preAuf of AUF) {
       for (const postAuf of AUF) {
         const end = normalizeCenters(applyAlg(s, `${preAuf} ${alg} ${postAuf}`));
@@ -362,7 +366,7 @@ export function undoMoves(current: string, target: string, log: string[]): strin
   return applyAlg(current, back) === target ? back : null;
 }
 
-/** The plans a recognised step offers (main alg first, then alternatives). */
+/** The plans a recognised step offers (preferred alg first, then the others). */
 export const hintPlans = (h: StepHint): AlgPlan[] =>
   [h, ...(h.alts ?? [])].filter((p) => p.alg || p.preAuf || p.postAuf);
 

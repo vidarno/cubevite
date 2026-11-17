@@ -12,6 +12,7 @@ import { canonicalFaceTurns, toFaceTurns } from './faceTurns';
 import { OLL, PLL, type AlgCase } from './algs';
 import { OCLL_CASES, OLL_EDGES_CASES, PLL_CORNERS_CASES, PLL_EDGES_CASES } from './twoLook';
 import type { LLStep, LLStepKind } from './cfop';
+import { algPrefsVersion, customAlgs } from './preferred';
 
 export interface AlgMatch {
   caseId: string;
@@ -19,6 +20,8 @@ export interface AlgMatch {
   alg: string;
   /** -1 = the case's main alg, otherwise the index into `alts`. */
   alt: number;
+  /** One of the user's own algs for the case (then `alt` is -1). */
+  custom?: boolean;
   /** Rotation the alg was done from ('' = as written; 'y2' = from the back, ...). */
   rotation: string;
 }
@@ -63,21 +66,28 @@ const STEP_CASES: Record<LLStepKind, AlgCase[]> = {
 };
 
 const indexCache = new Map<LLStepKind, Map<string, AlgMatch[]>>();
+let indexVersion = -1;
 
-/** key -> candidate matches for a step kind (built lazily). */
+/** key -> candidate matches for a step kind (built lazily; rebuilt when the user's own algs change). */
 function indexFor(kind: LLStepKind): Map<string, AlgMatch[]> {
+  if (indexVersion !== algPrefsVersion()) { indexCache.clear(); indexVersion = algPrefsVersion(); }
   let idx = indexCache.get(kind);
   if (idx) return idx;
   idx = new Map();
   for (const c of STEP_CASES[kind]) {
-    [c.alg, ...(c.alts ?? [])].forEach((alg, i) => {
+    const own = customAlgs(c.id).filter((a) => a !== c.alg && !c.alts?.includes(a));
+    const algs = [...[c.alg, ...(c.alts ?? [])].map((alg, i) => ({ alg, alt: i - 1, custom: false })),
+      ...own.map((alg) => ({ alg, alt: -1, custom: true }))];
+    for (const { alg, alt, custom } of algs) {
       for (const rotation of ROTATIONS) {
         const key = algKey(toFaceTurns(`${rotation} ${alg} ${INVERSE_ROT[rotation]}`));
         const list = idx!.get(key) ?? [];
-        if (!list.some((m) => m.caseId === c.id && m.alt === i - 1)) list.push({ caseId: c.id, alg, alt: i - 1, rotation });
+        if (!list.some((m) => m.caseId === c.id && m.alt === alt && !!m.custom === custom)) {
+          list.push({ caseId: c.id, alg, alt, rotation, ...(custom ? { custom } : {}) });
+        }
         idx!.set(key, list);
       }
-    });
+    }
   }
   indexCache.set(kind, idx);
   return idx;
@@ -87,7 +97,7 @@ function indexFor(kind: LLStepKind): Map<string, AlgMatch[]> {
 function lookup(kind: LLStepKind, moves: string, caseId: string | null): AlgMatch | null {
   const list = indexFor(kind).get(algKey(moves));
   if (!list?.length) return null;
-  const score = (m: AlgMatch) => (m.caseId === caseId ? 0 : 100) + (m.rotation ? 10 : 0) + (m.alt + 1);
+  const score = (m: AlgMatch) => (m.caseId === caseId ? 0 : 100) + (m.rotation ? 10 : 0) + (m.custom ? 5 : m.alt + 1);
   return [...list].sort((a, b) => score(a) - score(b))[0];
 }
 
@@ -148,7 +158,7 @@ export function matchLabel(m: AlgMatch): string {
     const viaPll = pllNameOfAlg(m.alg);
     if (viaPll) label += `: ${viaPll}`;
   }
-  const notes = [m.alt >= 0 ? `alt ${m.alt + 1}` : '', m.rotation ? `from ${m.rotation}` : ''].filter(Boolean);
+  const notes = [m.custom ? 'own alg' : m.alt >= 0 ? `alt ${m.alt + 1}` : '', m.rotation ? `from ${m.rotation}` : ''].filter(Boolean);
   return notes.length ? `${label} (${notes.join(', ')})` : label;
 }
 

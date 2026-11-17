@@ -13,6 +13,7 @@ import {
   type DrillCase, type StepHint,
 } from '../cube/drills';
 import { withoutRotations } from '../cube/faceTurns';
+import { caseAlgList } from '../cube/preferred';
 import { Follower, type FollowProgress } from '../cube/follow';
 import { movesBetween } from '../cube/solver';
 import { cubeStore, useCube } from '../state/cubeStore';
@@ -437,8 +438,9 @@ export function DrillRunner({ drill, pool, onStop }: { drill: Drill; pool: Drill
           {showAlg ? (
             algFollow ? <AlgFollowView follow={algFollow} /> : (
               <>
-                <div className="alg mono">{algText(c.alg)}</div>
-                {c.alts?.map((a) => <div key={a} className="alg mono muted small">alt: {algText(a)}</div>)}
+                {caseAlgList(c).map((a, k) => (k === 0
+                  ? <div key={a} className="alg mono">{algText(a)}</div>
+                  : <div key={a} className="alg mono muted small">alt: {algText(a)}</div>))}
               </>
             )
           ) : (
@@ -485,7 +487,7 @@ export function DrillRunner({ drill, pool, onStop }: { drill: Drill; pool: Drill
         {run.phase === 'solving' && <button className="ghost" onClick={restart} title="Undo back to this case's start and try again (not counted in stats)">Restart case</button>}
         {isCross && run.phase === 'ready' && crossMode === 'plan' && <button className="primary" onClick={revealCross}>Show optimal (space)</button>}
         {loopCase && (
-          <button className="ghost" onClick={() => openLoop({ id: loopCase.id, title: loopCase.id, algs: [loopCase.alg!, ...(loopCase.alts ?? [])], diagram: loopCase.diagram })}>
+          <button className="ghost" onClick={() => openLoop({ id: loopCase.id, title: loopCase.id, algs: caseAlgList(loopCase), diagram: loopCase.diagram })}>
             {run.phase === 'result' ? 'Loop this alg' : 'Loop previous alg'}
           </button>
         )}

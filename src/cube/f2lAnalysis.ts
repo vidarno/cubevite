@@ -8,6 +8,7 @@ import { orientCrossDown, solvedSlots, type CfopSplits, type TimedMove } from '.
 import { CROSS_DOWN_ROTATION, faceMapFor, mapMove } from './display';
 import { canonicalFaceTurns, toFaceTurns } from './faceTurns';
 import { F2L_SLOTS, pairStatus, recognizeF2L, slotName, type F2LSlot } from './f2lRecognize';
+import { customAlgs } from './preferred';
 
 /** The option is flagged as better when its alg is at least this many moves shorter. */
 export const ORDER_MARGIN = 3;
@@ -72,7 +73,7 @@ export function analyzeF2L(start: string, moves: TimedMove[], sp: CfopSplits): F
     if (r) {
       const mine = stripU(yourAlg);
       if (mine === stripU(inFrame(r.rotation, r.case.alg))) usedAlg = 'main';
-      else if (r.case.alts?.some((a) => mine === stripU(inFrame(r.rotation, a)))) usedAlg = 'alt';
+      else if ([...(r.case.alts ?? []), ...customAlgs(r.case.id)].some((a) => mine === stripU(inFrame(r.rotation, a)))) usedAlg = 'alt';
     }
     const dbMoves = r ? tokenize(r.moves).length : null;
     // Pair order: the shortest free pair at the start, if clearly shorter than what you did.

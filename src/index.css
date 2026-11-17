@@ -199,7 +199,7 @@ main { flex: 1; padding: 20px; max-width: 1280px; width: 100%; margin: 0 auto; }
 .alg-card.status-learned { border-left-color: var(--ok); }
 .alg-card-body { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .alg-card .alg { font-size: 0.95em; word-spacing: 2px; }
-.status-pills { display: flex; gap: 4px; margin-top: auto; }
+.status-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: auto; }
 .pill { padding: 1px 8px; font-size: 0.75em; border-radius: 99px; background: transparent; color: var(--muted); }
 .pill.on { background: var(--panel-2); color: var(--text); border-color: #555; }
 
@@ -357,3 +357,12 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .loop-reps li.unclean { color: var(--bad); }
 .pill.loop-btn:not(:disabled) { color: var(--text); }
 .clock.unclean { opacity: 0.45; text-decoration: line-through; }
+
+/* Alg card: preferred alg first, pick another / add your own */
+.alg-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.alg-line > .mono { overflow-wrap: anywhere; }
+.alg-tags { display: inline-flex; gap: 6px; align-items: baseline; flex-shrink: 0; margin-left: auto; }
+.link-btn { background: none; border: none; padding: 0 2px; color: var(--accent); cursor: pointer; font-size: inherit; }
+.link-btn:hover { text-decoration: underline; }
+.own-alg { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.own-alg input { flex: 1 1 180px; min-width: 0; }

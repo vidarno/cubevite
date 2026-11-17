@@ -7,6 +7,8 @@ import { applyAlg, FACES, isSolved, normalizeCenters, type Face } from './facele
 import { isF2LSolved, orientCrossDown, recognizeOLL, recognizePLL, caseState } from './cfop';
 import { aufToSolve, llCornersPermuted, llEdgesOriented, llOriented, solvedUpToAuf } from './states';
 import { caseName } from './algId';
+import type { AlgCase } from './algs';
+import { caseAlgList } from './preferred';
 import { TWO_LOOK_STEPS, type TwoLookStepId } from './twoLook';
 import {
   aufVariants, hintPlans, plansFor, pushAlgFollow, startAlgFollow, twoLookHint,
@@ -94,8 +96,7 @@ export function llHintFor(state: string, style: HintStyle): LLHint | null {
     if (!r) return null;
     const done = (x: string) => f2l(x) && llOriented(x);
     return {
-      caseId: r.case.id, name: caseName(r.case.id), alg: r.case.alg, preAuf: r.preAuf, postAuf: '',
-      alts: altPlans(s, r.case.alts, done, false),
+      caseId: r.case.id, name: caseName(r.case.id), ...plansOf(s, r.case, { preAuf: r.preAuf, postAuf: '' }, done, false),
       diagram: { state: caseState(r.case), mode: 'OLL' },
       stage: 'OLL', stepLabel: 'OLL', crossFace: face, isDone: done,
     };
@@ -103,15 +104,19 @@ export function llHintFor(state: string, style: HintStyle): LLHint | null {
   const r = recognizePLL(s);
   if (!r) return null;
   return {
-    caseId: r.case.id, name: r.case.name, alg: r.case.alg, preAuf: r.preAuf, postAuf: r.postAuf,
-    alts: altPlans(s, r.case.alts, isSolved, true),
+    caseId: r.case.id, name: r.case.name, ...plansOf(s, r.case, { preAuf: r.preAuf, postAuf: r.postAuf }, isSolved, true),
     diagram: { state: caseState(r.case), mode: 'PLL' },
     stage: 'PLL', stepLabel: 'PLL', crossFace: face, isDone: isSolved,
   };
 }
 
-function altPlans(s: string, alts: string[] | undefined, done: (s: string) => boolean, post: boolean) {
-  return alts?.flatMap((alg) => { const m = aufsFor(s, alg, done, post); return m ? [{ alg, ...m }] : []; });
+/** The case's algs as plans from `s`, preferred first (`main` = the recognised AUFs of the main alg). */
+function plansOf(s: string, c: AlgCase, main: { preAuf: string; postAuf: string }, done: (s: string) => boolean, post: boolean) {
+  const [first, ...alts] = caseAlgList(c).flatMap((alg) => {
+    const m = alg === c.alg ? main : aufsFor(s, alg, done, post);
+    return m ? [{ alg, ...m }] : [];
+  });
+  return { ...first, alts: alts.length ? alts : undefined };
 }
 
 /** Final AUF left after the last LL step (for display when no alg is needed). */

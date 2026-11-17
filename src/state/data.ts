@@ -1,6 +1,7 @@
 import type { HintStyle, SolveHint } from '../cube/llHint';
 import type { CfopSplits, TimedMove } from '../cube/cfop';
 import { createPersisted } from './storage';
+import { setAlgPrefs, type AlgPrefs } from '../cube/preferred';
 
 export interface Solve {
   id: string;
@@ -79,6 +80,11 @@ export interface CrossAttempt {
 }
 /** Alg loop (back-to-back reps of one alg) per case id: recent clean rep times and the rep count. */
 export interface LoopStats { times: number[]; reps: number; best: number | null }
+/** Preferred / own algs per case id; mirrored into the `src/cube/preferred` registry the drills and hints read. */
+export const algPrefsStore = createPersisted<AlgPrefs>('cubevite.algPrefs', {});
+setAlgPrefs(algPrefsStore.get());
+algPrefsStore.subscribe(() => setAlgPrefs(algPrefsStore.get()));
+
 export const loopStatsStore = createPersisted<Record<string, LoopStats>>('cubevite.loopStats', {});
 
 export const crossLogStore = createPersisted<CrossAttempt[]>('cubevite.crossLog', []);
