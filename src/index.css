@@ -372,3 +372,8 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .case-tile.due::after {
   content: ''; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--warn);
 }
+
+/* Recognition-only trainer result */
+.recog-result { display: grid; gap: 6px; margin: 4px 0 8px; }
+.recog-result .ok { color: var(--ok); font-weight: 600; }
+.recog-result .bad { color: var(--bad); font-weight: 600; }

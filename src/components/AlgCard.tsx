@@ -6,7 +6,7 @@ import { useCube } from '../state/cubeStore';
 import { useState } from 'react';
 import { caseKind, validateCaseAlg } from '../cube/algValidate';
 import { caseAlgList, customAlgs, withCustom, withoutCustom, withPreferred } from '../cube/preferred';
-import { algPrefsStore, caseStatsStore, formatTime, learnStore, loopStatsStore, settingsStore, srsStore, type LearnStatus } from '../state/data';
+import { algPrefsStore, caseStatsStore, formatTime, learnStore, loopStatsStore, recogStatsStore, settingsStore, srsStore, type LearnStatus } from '../state/data';
 import { dueIn } from '../cube/srs';
 import { openLoop } from '../state/loop';
 import { usePersisted } from '../state/storage';
@@ -23,6 +23,8 @@ export function AlgCard({ id, title, alg, alts, diagram, arrows, suggested }: {
   const [stats] = usePersisted(caseStatsStore);
   const [loopStats] = usePersisted(loopStatsStore);
   const [srs] = usePersisted(srsStore);
+  const [recog] = usePersisted(recogStatsStore);
+  const rs = recog[id];
   const card = srs[id];
   const [openedAt] = useState(() => Date.now());
   const due = card ? dueIn(card, Math.max(openedAt, card.last)) : '';
@@ -83,6 +85,11 @@ export function AlgCard({ id, title, alg, alts, diagram, arrows, suggested }: {
             {error && <div className="error small" role="alert">{error}</div>}
           </form>
         )}
+        {rs?.attempts ? (
+          <div className="muted small" title="Recognition-only trainer: mean of the last 5 recognised · recognised / attempts">
+            recognition: {formatTime(recentAvg(rs.times))} avg · {rs.attempts - rs.misses}/{rs.attempts}
+          </div>
+        ) : null}
         {card && (
           <div className="muted small" data-testid="srs" title="Spaced repetition: when the trainer brings this case up again">
             review {due === 'now' ? 'due now' : `in ${due}`} · box {card.box}{card.lapses ? ` · missed ${card.lapses}×` : ''}

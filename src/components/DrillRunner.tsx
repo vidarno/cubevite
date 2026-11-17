@@ -9,7 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { crossReport, type CrossReport } from '../cube/crossDrill';
 import { f2lPairReport, type PairReport } from '../cube/f2lDrill';
 import {
-  advanceSteps, aufVariants, bestPlan, casePlans, crossLevel, crossPlans, toCrossDown, TRAINING_CROSS, undoMoves, hintAlg, hintPlans, pickCase, plansFor, pushAlgFollow, startAlgFollow, type AlgFollow, type Drill,
+  advanceSteps, aufVariants, bestPlan, casePlans, recentAvg, crossLevel, crossPlans, toCrossDown, TRAINING_CROSS, undoMoves, hintAlg, hintPlans, pickCase, plansFor, pushAlgFollow, startAlgFollow, type AlgFollow, type Drill,
   type DrillCase, type StepHint,
 } from '../cube/drills';
 import { withoutRotations } from '../cube/faceTurns';
@@ -17,7 +17,7 @@ import { caseAlgList } from '../cube/preferred';
 import { Follower, type FollowProgress } from '../cube/follow';
 import { movesBetween } from '../cube/solver';
 import { cubeStore, useCube } from '../state/cubeStore';
-import { caseStatsStore, crossLogStore, formatTime, settingsStore, srsStore, type CrossMode } from '../state/data';
+import { caseStatsStore, crossLogStore, formatTime, recogStatsStore, settingsStore, srsStore, type CrossMode } from '../state/data';
 import { quarterTurns } from '../cube/algLoop';
 import { targetMsFor } from '../cube/learningPath';
 import { gradeAttempt, pickDue, reviewed, type Attempt } from '../cube/srs';
@@ -42,7 +42,9 @@ type Run =
   | { phase: 'solving'; c: DrillCase | null; target: string; redo?: Redo; readyAt: number; startTs: number; moves: number; log: string[]; step: number; splits: number[]; hints: Hints; follow: AlgFollow | null;
       /** Elapsed ms of each move, and the cube-frame state at the start of each step (for the F2L pair report). */
       times: number[]; stepStates: string[] }
-  | { phase: 'result'; c: DrillCase | null; target: string; redo?: Redo; log: string[]; time: number; moves: number; splits: number[]; hints: Hints; cross?: CrossOutcome; pairs?: PairReport[] };
+  | { phase: 'result'; c: DrillCase | null; target: string; redo?: Redo; log: string[]; time: number; moves: number; splits: number[]; hints: Hints; cross?: CrossOutcome; pairs?: PairReport[];
+      /** Recognition-only attempt: `got` is the self-grade (null until given). */
+      recog?: { got: boolean | null } };
 
 /** Cross drill result; execMs is null in plan-only mode (revealed without solving). */
 interface CrossOutcome { report: CrossReport; planMs: number; execMs: number | null }
@@ -66,6 +68,18 @@ function recordReview(caseId: string, a: Omit<Attempt, 'targetMs'>) {
 /** Turns beyond the shortest plan being followed (null without a follow). */
 const extraMoves = (f: AlgFollow | null, moves: number) =>
   f?.plans.length ? moves - Math.min(...f.plans.map((p) => quarterTurns(`${p.preAuf} ${p.alg} ${p.postAuf}`))) : undefined;
+
+/** Recognition-only drills: case drills (not cross / full F2L / random-state drills). */
+const canRecognize = (drill: Drill) => drill.cases.length > 0 && !drill.kind;
+
+function recordRecognition(caseId: string, ms: number, got: boolean) {
+  recogStatsStore.set((s) => {
+    const prev = s[caseId] ?? { times: [], attempts: 0, misses: 0 };
+    return { ...s, [caseId]: { times: got ? [...prev.times, ms].slice(-50) : prev.times, attempts: prev.attempts + 1, misses: prev.misses + (got ? 0 : 1) } };
+  });
+  // A miss sends the case back for review; a quick hit doesn't promote it (execution isn't tested).
+  if (!got) srsStore.set((d) => reviewed(d, caseId, 'again', Date.now()));
+}
 
 function recordTime(key: string, ms: number) {
   caseStatsStore.set((s) => {
@@ -170,6 +184,43 @@ export function DrillRunner({ drill, pool, onStop }: { drill: Drill; pool: Drill
     if (r && (r.phase === 'setup' || r.phase === 'ready')) startCase(r.c, r.redo && { target: r.target, log: [], redo: r.redo });
   }, [cube.resyncVersion, smart, startCase, looping]);
 
+  // --- recognition only -----------------------------------------------------------------------
+  const recognizing = useCallback(() => canRecognize(drill) && !!settingsStore.get().drillRecognize, [drill]);
+  /** "I know it" (space or first turn while ready): stop the clock, show the case for a self-grade. */
+  const finishRecognition = useCallback((at: number) => {
+    const r = runRef.current;
+    if (r?.phase !== 'ready') return;
+    const res: Run = { phase: 'result', c: r.c, target: r.target, redo: r.redo, log: [], time: at - r.readyAt, moves: 0, splits: [], hints: r.hints, recog: { got: null } };
+    setRun(res);
+    runRef.current = res;
+    lastResult.current = { c: r.c, target: r.target, log: [], since: [] };
+    setLast({ c: r.c });
+  }, []);
+  const gradeRecognition = useCallback((got: boolean) => {
+    const r = runRef.current;
+    if (r?.phase !== 'result' || !r.recog || r.recog.got !== null) return;
+    if (r.c && !r.redo) recordRecognition(r.c.id, r.time, got);
+    const res: Run = { ...r, recog: { got } };
+    setRun(res);
+    runRef.current = res;
+    window.setTimeout(() => { if (runRef.current === res) next(); }, got ? 600 : 1500);
+  }, [next]);
+  useEffect(() => {
+    if (!smart || !canRecognize(drill)) return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
+      const r = runRef.current;
+      if (r?.phase === 'ready' && recognizing() && e.code === 'Space') { e.preventDefault(); finishRecognition(performance.now()); }
+      else if (r?.phase === 'result' && r.recog?.got === null) {
+        if (e.code === 'Space') { e.preventDefault(); gradeRecognition(true); }
+        else if (e.key.toLowerCase() === 'm') { e.preventDefault(); gradeRecognition(false); }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [smart, drill, recognizing, finishRecognition, gradeRecognition]);
+
   // --- smart cube moves ------------------------------------------------------------------------
   useEffect(() => cubeStore.onMove((ev) => {
     const r = runRef.current;
@@ -182,6 +233,8 @@ export function DrillRunner({ drill, pool, onStop }: { drill: Drill; pool: Drill
       const p = f.push(ev.move, ev.state);
       setFollow(p);
       if (p.complete || ev.state === r.target) setRun(readyRun(r.c, r.target, r.redo));
+    } else if (r.phase === 'ready' && recognizing()) {
+      finishRecognition(ev.localTimestamp);
     } else if (r.phase === 'ready' || r.phase === 'solving') {
       const solving = r.phase === 'solving' ? r
         : { ...r, phase: 'solving' as const, startTs: ev.localTimestamp, moves: 0, log: [], step: 0, splits: [], times: [], stepStates: [r.target] };
@@ -233,16 +286,17 @@ export function DrillRunner({ drill, pool, onStop }: { drill: Drill; pool: Drill
         setRun({ ...solving, moves, log, step, splits, hints, follow, times, stepStates });
       }
     }
-  }), [drill, readyRun]);
+  }), [drill, readyRun, recognizing, finishRecognition]);
 
   // Auto-advance after a result (the cross drill waits: its result has solutions to read).
   useEffect(() => {
-    if (run?.phase !== 'result' || drill.kind === 'cross' || looping) return;
+    if (run?.phase !== 'result' || drill.kind === 'cross' || looping || run.recog) return;
     const t = window.setTimeout(() => next(), 1500);
     return () => clearTimeout(t);
   }, [run, next, drill.kind, looping]);
 
-  const ticking = run?.phase === 'solving' || (run?.phase === 'ready' && drill.kind === 'cross');
+  const recogOn = smart && canRecognize(drill) && !!settings.drillRecognize;
+  const ticking = run?.phase === 'solving' || (run?.phase === 'ready' && (drill.kind === 'cross' || recogOn));
   useEffect(() => {
     if (!ticking) return;
     let raf = 0;
@@ -306,7 +360,9 @@ export function DrillRunner({ drill, pool, onStop }: { drill: Drill; pool: Drill
   const hintShown = curHint && (alwaysShowAlg || hintStep === curStep || (run.phase === 'solving' && stepElapsed > HINT_DELAY_MS));
   const algLen = c?.alg ? c.alg.split(' ').length : 0;
   const stuck = run.phase === 'solving' && !!c?.alg && run.moves > algLen * 2 + 4;
-  const showAlg = (alwaysShowAlg && run.phase !== 'setup') || revealed || run.phase === 'result' || stuck;
+  /** Recognition only: nothing gives the case away before the self-grade. */
+  const guessing = recogOn && run.phase !== 'result';
+  const showAlg = !guessing && ((alwaysShowAlg && run.phase !== 'setup') || revealed || run.phase === 'result' || stuck);
   const algFollow = run.phase === 'ready' || run.phase === 'solving' ? run.follow : null;
   /** Alg hidden: the undo for a wrong turn (relative to the closest DB alg), if undo tips are on. */
   const algHidden = c ? !showAlg : !hintShown;
@@ -339,7 +395,7 @@ export function DrillRunner({ drill, pool, onStop }: { drill: Drill; pool: Drill
   /** The case just done (result, or the next case's setup), if it has an alg to loop. */
   const loopCase = smart && (run.phase === 'result' || run.phase === 'setup') && last?.c?.alg ? last.c : null;
   const title = isCross ? `Cross${crossLevel(c) ? ` · ${c!.label}` : ''}`
-    : c && (run.phase === 'result' || showAlg || !showCase) ? c.id : drill.label;
+    : c && (run.phase === 'result' || showAlg || (!showCase && !guessing)) ? c.id : drill.label;
 
   return (
     <div className="trainer-run" data-phase={run.phase} data-case={c?.id}>
@@ -366,13 +422,19 @@ export function DrillRunner({ drill, pool, onStop }: { drill: Drill; pool: Drill
               </label>
             </>
           )}
-          {smart && (c?.alg || drill.steps.some((st) => st.classify)) && (
+          {smart && canRecognize(drill) && (
+            <label className="toggle" title="Only recognise the case: the clock stops on space or your first turn, then say whether you got it">
+              <input type="checkbox" checked={settings.drillRecognize ?? false} onChange={(e) => { setSettings((st) => ({ ...st, drillRecognize: e.target.checked })); e.currentTarget.blur(); }} />
+              Recognition only
+            </label>
+          )}
+          {smart && !recogOn && (c?.alg || drill.steps.some((st) => st.classify)) && (
             <label className="toggle">
               <input type="checkbox" checked={settings.drillShowAlg ?? true} onChange={(e) => setSettings((st) => ({ ...st, drillShowAlg: e.target.checked }))} />
               Show algorithm
             </label>
           )}
-          {smart && !alwaysShowAlg && !isCross && (c?.alg || drill.steps.some((st) => st.classify)) && (
+          {smart && !alwaysShowAlg && !recogOn && !isCross && (c?.alg || drill.steps.some((st) => st.classify)) && (
             <label className="toggle" title="With the alg hidden, still show how to undo a wrong turn">
               <input type="checkbox" checked={settings.drillUndoTips ?? true} onChange={(e) => setSettings((st) => ({ ...st, drillUndoTips: e.target.checked }))} />
               Undo tips
@@ -384,7 +446,7 @@ export function DrillRunner({ drill, pool, onStop }: { drill: Drill; pool: Drill
               No rotations
             </label>
           )}
-          {c?.diagram && (
+          {c?.diagram && !recogOn && (
             <label className="toggle">
               <input type="checkbox" checked={showCase} onChange={(e) => setShowCase(e.target.checked)} />
               Show case picture
@@ -403,7 +465,7 @@ export function DrillRunner({ drill, pool, onStop }: { drill: Drill; pool: Drill
       )}
 
       <div className="trainer-body">
-        {c?.diagram && (showCase || run.phase === 'result' || !smart) && (
+        {c?.diagram && ((showCase && !guessing) || run.phase === 'result' || !smart) && (
           <LLDiagram state={c.diagram.state} mode={c.diagram.mode} size={180} arrows={settings.pllArrows ?? true} />
         )}
         {smart && !hideCube && <LiveCube size={240} />}
@@ -414,7 +476,7 @@ export function DrillRunner({ drill, pool, onStop }: { drill: Drill; pool: Drill
         <div className={`clock ${run.phase === 'solving' ? 'running' : run.phase === 'ready' ? 'ready' : ''}`}>
           {run.phase === 'solving' ? formatTime(now - run.startTs, 1)
             : run.phase === 'result' ? (run.cross?.execMs === null ? 'Plan' : formatTime(run.time))
-            : isCross ? inspectionLabel(inspecting, inspectLimit) : 'Go!'}
+            : isCross ? inspectionLabel(inspecting, inspectLimit) : recogOn ? formatTime(now - run.readyAt, 1) : 'Go!'}
         </div>
       )}
       {drill.steps.length > 1 && (run.phase === 'solving' || (run.phase === 'result' && !run.pairs)) && (
@@ -462,9 +524,13 @@ export function DrillRunner({ drill, pool, onStop }: { drill: Drill; pool: Drill
       )}
       {run.phase === 'result' && run.cross && <CrossResult report={run.cross.report} planMs={run.cross.planMs} execMs={run.cross.execMs} />}
       {run.phase === 'result' && run.pairs && <F2LPairResult pairs={run.pairs} />}
-      {run.phase === 'result' && !run.cross && <p className="muted">{run.moves} moves</p>}
+      {run.phase === 'result' && !run.cross && !run.recog && <p className="muted">{run.moves} moves</p>}
+      {recogOn && run.phase === 'ready' && (
+        <p className="muted" data-testid="recog-prompt">Recognise the case: press <b>space</b> (or start turning) as soon as you know it.</p>
+      )}
+      {run.phase === 'result' && run.recog && c && <RecogResult caseId={c.id} got={run.recog.got} onGrade={gradeRecognition} />}
 
-      {c?.alg && (showAlg || !alwaysShowAlg) && (
+      {c?.alg && !guessing && (showAlg || !alwaysShowAlg) && (
         <div className="alg-box">
           {showAlg ? (
             algFollow ? <AlgFollowView follow={algFollow} /> : (
@@ -538,4 +604,26 @@ function inspectionLabel(ms: number, limit: number): string {
   if (!limit) return formatTime(ms, 1);
   const left = Math.ceil((limit - ms) / 1000);
   return left > 0 ? String(left) : `+${Math.floor((ms - limit) / 1000)}`;
+}
+
+/** Recognition-only result: self-grade, then the running recognition average for the case. */
+function RecogResult({ caseId, got, onGrade }: { caseId: string; got: boolean | null; onGrade: (got: boolean) => void }) {
+  const [stats] = usePersisted(recogStatsStore);
+  const st = stats[caseId];
+  return (
+    <div className="recog-result" data-got={got === null ? '' : String(got)}>
+      {got === null ? (
+        <div className="row">
+          <span>Did you recognise it?</span>
+          <button className="primary" onClick={() => onGrade(true)}>Got it (space)</button>
+          <button className="danger" onClick={() => onGrade(false)}>Missed (M)</button>
+        </div>
+      ) : <div className={got ? 'ok' : 'bad'}>{got ? '✓ recognised' : '✗ missed: it comes back soon'}</div>}
+      {st && (
+        <div className="muted small">
+          Recognition: {formatTime(recentAvg(st.times))} avg (last 5) · {st.attempts - st.misses}/{st.attempts} recognised
+        </div>
+      )}
+    </div>
+  );
 }

@@ -9,7 +9,7 @@ try { await fetch(BASE); } catch {
   process.exit(2);
 }
 const only = process.argv.slice(2);
-const scripts = (only.length ? only : ['timer', 'hints', 'trainer', 'twolook', 'learning', 'insights', 'cross', 'f2l', 'loop', 'rotations', 'prefs', 'srs']).map((s) => new URL(`./${s}.mjs`, import.meta.url).pathname);
+const scripts = (only.length ? only : ['timer', 'hints', 'trainer', 'twolook', 'learning', 'insights', 'cross', 'f2l', 'loop', 'rotations', 'prefs', 'srs', 'recog']).map((s) => new URL(`./${s}.mjs`, import.meta.url).pathname);
 let failed = 0;
 for (const s of scripts) {
   const r = spawnSync(process.execPath, [s], { stdio: 'inherit' });

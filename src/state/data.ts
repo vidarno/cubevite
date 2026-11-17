@@ -62,6 +62,8 @@ export interface Settings {
   crossInspect?: number;
   /** Timer: last-layer hints while solving (default 2-look). */
   llHints?: HintStyle;
+  /** Trainer: recognition only (clock stops on space / first turn, no execution). */
+  drillRecognize?: boolean;
   /** Trainer: due cases first (spaced repetition; default on). */
   srs?: boolean;
   /** Timer: seconds without a turn before the hint name, then before the picture, then the alg (default 5/5/5). */
@@ -87,6 +89,10 @@ export interface LoopStats { times: number[]; reps: number; best: number | null 
 export const algPrefsStore = createPersisted<AlgPrefs>('cubevite.algPrefs', {});
 setAlgPrefs(algPrefsStore.get());
 algPrefsStore.subscribe(() => setAlgPrefs(algPrefsStore.get()));
+
+/** Recognition-only trainer attempts per case id: recent recognition times, attempts, misses. */
+export interface RecogStats { times: number[]; attempts: number; misses: number }
+export const recogStatsStore = createPersisted<Record<string, RecogStats>>('cubevite.recogStats', {});
 
 /** Spaced-repetition boxes per case id (trainer grades, Timer hints). */
 export const srsStore = createPersisted<SrsDeck>('cubevite.srs', {});
