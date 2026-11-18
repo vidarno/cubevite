@@ -4,6 +4,7 @@ import { WEAKEST_DRILL_ID } from '../cube/learningPath';
 import { countedSolves, formatTime, solvesStore, weakestStore } from '../state/data';
 import { openTrainer } from '../state/nav';
 import { usePersisted } from '../state/storage';
+import { ProgressChart } from '../components/ProgressChart';
 
 const WEAKEST_N = 5;
 const LIMIT = 100;
@@ -19,9 +20,19 @@ export function InsightsPage() {
     openTrainer(WEAKEST_DRILL_ID);
   };
 
+  const counted = countedSolves(solves);
+  const progress = counted.length >= 2 && (
+    <section className="panel" data-testid="progress">
+      <h3>Progress</h3>
+      <ProgressChart solves={counted} />
+      <p className="muted small">Every timed solve (redos left out), with your running averages. The full list is on the Timer page.</p>
+    </section>
+  );
+
   if (!ins.n) {
     return (
       <div className="insights-page">
+        {progress}
         <section className="panel">
           <h2>Insights</h2>
           <p className="muted">No smart-cube solves yet. Solve with your GAN cube (or the virtual cube) on the Timer page and
@@ -46,6 +57,8 @@ export function InsightsPage() {
           {weakest.length > 0 && <> Weakest: {weakest.map((id) => ins.cases.find((c) => c.caseId === id)!.name).join(', ')}.</>}
         </p>
       </section>
+
+      {progress}
 
       <section className="panel">
         <h3>Stage averages</h3>

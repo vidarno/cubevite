@@ -3,6 +3,7 @@ import type { CfopSplits, TimedMove } from '../cube/cfop';
 import { createPersisted } from './storage';
 import { setAlgPrefs, type AlgPrefs } from '../cube/preferred';
 import type { SrsDeck } from '../cube/srs';
+import { averageOfLast } from '../cube/stats';
 
 export interface Solve {
   id: string;
@@ -112,16 +113,8 @@ export function effectiveTime(s: Solve): number | null {
   return s.time + (s.penalty === '+2' ? 2000 : 0);
 }
 
-/** WCA average of n: drop best and worst (5%), DNF counts as worst. */
-export function averageOf(solves: Solve[], n: number): number | null | undefined {
-  if (solves.length < n) return undefined;
-  const times = solves.slice(-n).map(effectiveTime);
-  const trim = Math.max(1, Math.ceil(n * 0.05));
-  const dnfs = times.filter((t) => t === null).length;
-  if (dnfs > trim) return null;
-  const sorted = times.map((t) => t ?? Infinity).sort((a, b) => a - b).slice(trim, n - trim);
-  return sorted.reduce((a, b) => a + b, 0) / sorted.length;
-}
+/** WCA average of the last n solves: drop best and worst (5%), DNF counts as worst; undefined if fewer than n. */
+export const averageOf = (solves: Solve[], n: number) => averageOfLast(solves.map(effectiveTime), n);
 
 export function formatTime(ms: number | null | undefined, digits = 2): string {
   if (ms === undefined) return '–';
